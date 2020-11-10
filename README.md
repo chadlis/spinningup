@@ -3,11 +3,12 @@ Spinningup
 
 Implementation of RL algorithms
 
-Project Organization
 ------------
 
     ├── LICENSE
+    │
     ├── Makefile           <- Makefile with commands like `make data` or `make train`
+    │
     ├── README.md          <- The top-level README for developers using this project.
     │
     ├── docs               <- A default Sphinx project; see sphinx-doc.org for details
@@ -19,9 +20,12 @@ Project Organization
     │
     ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
     │                         generated with `pip freeze > requirements.txt`
+    │                         
+    ├── runs               <- Tensorboard experiments logs
     │
     ├── setup.py           <- makes project pip installable (pip install -e .) so src can be imported
-    ├── src                <- Source code for use in this project.
+    │  
+    ├── src                <- Source code
     │   ├── __init__.py    <- Makes src a Python module
     │   │
     │   ├── algos           <- RL algorithms code
@@ -33,4 +37,3 @@ Project Organization
 
 --------
 
-<p><small>Template based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>

@@ -43,7 +43,10 @@ class Agent():
         self.qfunction = DQN(self.lr, input_dims, n_actions)
         self.n_actions = n_actions
         self.epoch_nb = 0
-        self.writer = SummaryWriter()
+        self.writer = SummaryWriter(comment='_lr='+str(lr)+'_gamma='+str(gamma)+'_replay='+str(replay_capacity)+'_batch='+str(batch_size))
+
+        self.evaluation_state_memory=[]
+        self.evaluation_states=T.Tensor(list([]))
 
     def choose_action(self, observation):
         state = T.Tensor(observation)
@@ -61,7 +64,19 @@ class Agent():
 
     def store_transitions(self, transition):
         self.transition_memory.append(transition)
-    
+
+    def store_evaluation_state(self, state):
+        self.evaluation_state_memory.append(state)
+        return len(self.evaluation_state_memory)
+
+    def define_evaluation_states(self):
+        random_states_idx = random.sample(range(1000), 100)
+        eval_states = np.array(self.evaluation_state_memory)[random_states_idx]
+        self.evaluation_states =  T.Tensor(list(eval_states))
+
+    def evaluate(self):
+        return T.mean(T.max(self.qfunction.forward(self.evaluation_states), dim=1)[0])
+
     def learn(self):
         batch_size = min(self.batch_size, len(self.transition_memory))
         random_batch_idx = random.sample(range(len(self.transition_memory)), batch_size)
@@ -82,11 +97,9 @@ class Agent():
 
         s_ip1_not_terminal = T.Tensor([list(transitions_array.T[4])])
         
-
-        
         q_i = self.qfunction.forward(s_i)
         q_i_a_i = T.sum(T.mul(q_i, a_i), 2)
-
+        
         q_ip1 = self.qfunction.forward(s_ip1)
         q_ip1_max,_ = T.max(q_ip1, dim=1)
 
@@ -97,6 +110,7 @@ class Agent():
 
         self.epoch_nb += 1
         self.writer.add_scalar("Loss/train", loss, self.epoch_nb)
+        self.writer.add_scalar("q_value/test", self.evaluate(), self.epoch_nb)
 
         loss.backward()
 

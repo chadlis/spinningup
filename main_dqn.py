@@ -22,14 +22,14 @@ parser.add_argument('--epsilondecaysteps', type=float, default=1, help='explorat
 parser.add_argument('--gamma', type=float, default=0.99, help='discount factor (default: 0.99)')
 parser.add_argument('--lr', type=float, default=0.0005, help='learning rate (default: 0.001)')
 
-parser.add_argument('--replaycapacity', type=int, default=1000, help='Replay buffer capacity (default: 1000)')
-parser.add_argument('--batchsize', type=int, default=100, help='batch size (default: 100)')
+parser.add_argument('--replaycapacity', type=int, default=100000, help='Replay buffer capacity (default: 1000)')
+parser.add_argument('--batchsize', type=int, default=10000, help='batch size (default: 100)')
 
 
-parser.add_argument('--games', type=int, default=250, help='number of episodes/games (default: 1000)')
+parser.add_argument('--games', type=int, default=60, help='number of episodes/games (default: 1000)')
 parser.add_argument('--render', action='store_true',  help='render the environment')
 parser.add_argument('--runs', type=int, default=2, help='number of runs (default: 10)')
-parser.add_argument('--avgnb', type=int, default=100, help='number of episodes to include in the running average (default: 100)')
+parser.add_argument('--avgnb', type=int, default=10, help='number of episodes to include in the running average (default: 100)')
 parser.add_argument('--filenameaddtext', type=str, default='', help='additional text to add to the filename')
 args = parser.parse_args()
 
@@ -92,80 +92,106 @@ if __name__ == '__main__':
     
     logger = logging.getLogger(__name__)
 
-    # iterate over 10 runs
-    for run_nb in range(n_runs):
-        logger.info('RUN ' + str(run_nb))
 
-        # initialize environment
-        env = environment.make(env_name)
+    # initialize environment
+    env = environment.make(env_name)
 
-        # improve reproducibility
-        env.seed(seed)
-        #np.random.seed(seed)
-        
-        # get the dimensions of the states and actions spaces
-        input_dims, n_actions = environment.get_dims(env, env_name)
+    # improve reproducibility
+    env.seed(seed)
+    #np.random.seed(seed)
+    
+    # get the dimensions of the states and actions spaces
+    input_dims, n_actions = environment.get_dims(env, env_name)
 
-        # initialize the agent with the choosen parameters
-        agent = Agent(input_dims=input_dims, n_actions=n_actions, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, replay_capacity=replay_capacity, batch_size=batch_size, gamma=gamma, lr=lr)
-        
-        # scores and losses memory array for monitoring
-        scores = []
-        losses = []
+    # initialize the agent with the choosen parameters
+    agent = Agent(input_dims=input_dims, n_actions=n_actions, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, replay_capacity=replay_capacity, batch_size=batch_size, gamma=gamma, lr=lr)
+    
+    # scores and losses memory array for monitoring
+    scores = []
+    losses = []
+    
 
-        # iterate over the episodes
-        for i in range(n_games):
-            done = False
-            # reset the environment to begin the episode
-            observation = env.reset()
-            score = 0
-            modified_score = 0
-            steps_nb = 0
+    # iterate over the episodes to collect evaluation states with a random policy
+    for i in range(1000):
+        done = False
+        # reset the environment to begin the episode
+        observation = env.reset()
+        stored_eval_states_nb = 0
+        while (not done and stored_eval_states_nb < 1000):
+            # preprocess observations if needed
+            observation = environment.process_obs(observation, env_name)
 
-            while not done:
-                steps_nb += 1
-                if flag_render:
-                    env.render()
-                
-                # preprocess observations if needed
-                observation = environment.process_obs(observation, env_name)
+            # use a random policy to choose an action
+            action = env.action_space.sample()
 
-                # use the agent's current policy to choose an action
-                action = agent.choose_action(observation)
+            # make a step in the environment and get the new observation and the reward
+            observation_, reward, done, info = env.step(action)
 
-                # make a step in the environment and get the new observation and the reward
-                observation_, reward, done, info = env.step(action)
-                score += reward
+            # store evaluation state in the agent memory
+            stored_eval_states_nb = agent.store_evaluation_state(observation)
 
-                modified_score += environment.modify_reward(reward, done, env_name)
-                
-                # store transition in the agent's transition memory
-                transition = (observation, action, reward, observation_, int(not done))
-                agent.store_transitions(transition)
+            # make the new observation as the current one
+            observation = observation_
 
-                # make the new observation as the current one
-                observation = observation_
+        if stored_eval_states_nb>=1000:
+            break;
+    
+    agent.define_evaluation_states()
+    
+
+    # iterate over the episodes
+    for i in range(n_games):
+        done = False
+        score = 0
+        modified_score = 0
+        steps_nb = 0
+
+        # reset the environment to begin the episode
+        observation = env.reset()
+        while not done:
+            steps_nb += 1
+            if flag_render:
+                env.render()
             
-                # learn and modify the agent policy, and get the loss term and the number of steps of the episode
-                loss_item = agent.learn()
+            # preprocess observations if needed
+            observation = environment.process_obs(observation, env_name)
 
-            # save loss and score and compute and print running average for monitoring
-            losses.append(loss_item)
-            scores.append(score)
-            agent.add_to_tb(score, 'score')
-            avg_score = np.mean(scores[-avg_episodes_nb:])
-            avg_loss = np.mean(losses[-avg_episodes_nb:])
+            # use the agent's current policy to choose an action
+            action = agent.choose_action(observation)
 
-            # debugging 
-            info_to_log = 'episode ', i, 'score %.2f' % score, ' modified score %.2f' % modified_score, 'average score %.2f' % avg_score,\
-                'average loss %.2f' % avg_loss, 'steps number', steps_nb
-            logger.debug(info_to_log)
-            steps_nb = 0
-        # add score and loss running avg curves to plotter
-        score_plotter.add_curve(scores)
-        loss_plotter.add_curve(losses)
+            # make a step in the environment and get the new observation and the reward
+            observation_, reward, done, info = env.step(action)
+            score += reward
 
-        agent.flush_tb()
+            modified_score += environment.modify_reward(reward, done, env_name)
+            
+            # store transition in the agent's transition memory
+            transition = (observation, action, reward, observation_, int(not done))
+            agent.store_transitions(transition)
+
+            # make the new observation as the current one
+            observation = observation_
+        
+            # learn and modify the agent policy, and get the loss term and the number of steps of the episode
+            loss_item = agent.learn()
+
+        # save loss and score and compute and print running average for monitoring
+        losses.append(loss_item)
+        scores.append(score)
+        agent.add_to_tb(score, 'score')
+        avg_score = np.mean(scores[-avg_episodes_nb:])
+        avg_loss = np.mean(losses[-avg_episodes_nb:])
+
+        # debugging 
+        info_to_log = 'episode ', i, 'score %.2f' % score, ' modified score %.2f' % modified_score, 'average score %.2f' % avg_score,\
+            'average loss %.2f' % avg_loss, 'steps number', steps_nb
+        logger.debug(info_to_log)
+        steps_nb = 0
+    # add score and loss running avg curves to plotter
+    score_plotter.add_curve(scores)
+    loss_plotter.add_curve(losses)
+
+    agent.flush_tb()
     
     agent.close_tb()
     score_plotter.plot()

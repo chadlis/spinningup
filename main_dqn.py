@@ -67,9 +67,9 @@ if __name__ == '__main__':
     fname = alg_name + '_' + env_name + '_' + 'lr' + str(lr) + '_' + 'gamma' + str(gamma) + '_' + str(n_games) + 'games' \
          + str('' if filename_add_text=='' else '_'+ filename_add_text)
          
-    figure_file_score =  fname + '_' + 'score' + '_' + timestampStr  + '.html'
-    figure_file_loss = fname + '_' + 'loss' + '_' + timestampStr +  '.html'
-    log_file = fname + '_' + timestampStr +  '.log'
+    figure_file_score =  'reports/figures/' + fname + '_' + 'score' + '_' + timestampStr  + '.html'
+    figure_file_loss = 'reports/figures/' + fname + '_' + 'loss' + '_' + timestampStr +  '.html'
+    log_file = 'reports/logs/' + fname + '_' + timestampStr +  '.log'
 
     score_plotter = plotting.Plotter(running_average=True, running_avg_episodes_nb=100, title="Running avg score", x_title="episode", y_title="Running avg score", filepath=figure_file_score)
     loss_plotter = plotting.Plotter(running_average=True, running_avg_episodes_nb=100, title="Running avg loss", x_title="episode", y_title="Running avg loss", filepath=figure_file_loss)

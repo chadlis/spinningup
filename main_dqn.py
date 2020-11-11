@@ -65,10 +65,10 @@ if __name__ == '__main__':
     dateTimeObj = datetime.now()
     timestampStr = dateTimeObj.strftime("%Y%m%d%H%M%S")
 
-    fname = alg_name + '_' + env_name + '_lr=' + str(lr) + '_gamma=' + str(gamma) \
-        + '_replay=' + str(replay_capacity) + '_batch='+str(batch_size)
+    exp_param = alg_name + '_' + env_name + '_lr=' + str(lr) + '_gamma=' + str(gamma) \
+        + '_replay=' + str(replay_capacity) + '_batch=' + str(batch_size) +'_eps=' + str(epsilon)
          
-    log_file = 'reports/logs/' + fname + '_' + timestampStr +  '.log'
+    log_file = 'reports/logs/' + exp_param + '_' + timestampStr +  '.log'
 
     # set up logging to file
     logging.basicConfig(level=logging.DEBUG,
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     input_dims, n_actions = environment.get_dims(env, env_name)
 
     # initialize the agent with the choosen parameters
-    agent = Agent(input_dims=input_dims, n_actions=n_actions, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, replay_capacity=replay_capacity, batch_size=batch_size, gamma=gamma, lr=lr)
+    agent = Agent(input_dims=input_dims, n_actions=n_actions, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, replay_capacity=replay_capacity, batch_size=batch_size, gamma=gamma, lr=lr, exp_param=exp_param)
     
     # scores and losses memory array for monitoring
     scores = []
@@ -116,15 +116,16 @@ if __name__ == '__main__':
     for i in range(n_games):
         done = False
         score = 0
-        modified_score = 0
-        steps_nb = 0
+        ep_steps_count = 0
 
         # reset the environment to begin the episode
         observation = env.reset()
+
         while not done:
-            steps_nb += 1
+            ep_steps_count += 1
+
             if flag_render:
-                env.render()
+                env.render()    
             
             # preprocess observations if needed
             observation = environment.process_obs(observation, input_dims, env_name)
@@ -136,8 +137,6 @@ if __name__ == '__main__':
             observation_, reward, done, info = env.step(action)
             score += reward
 
-            modified_score += environment.modify_reward(reward, done, env_name)
-            
             # store transition in the agent's transition memory
             transition = (observation, action, reward, observation_, int(not done))
             agent.store_transitions(transition)
@@ -156,10 +155,9 @@ if __name__ == '__main__':
         avg_loss = np.mean(losses[-avg_episodes_nb:])
 
         # debugging 
-        info_to_log = 'episode ', i, 'score %.2f' % score, ' modified score %.2f' % modified_score, 'average score %.2f' % avg_score,\
-            'average loss %.2f' % avg_loss, 'steps number', steps_nb
+        info_to_log = 'episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,\
+            'average loss %.2f' % avg_loss, 'steps number', ep_steps_count
         logger.debug(info_to_log)
-        steps_nb = 0
 
     agent.flush_tb()
     

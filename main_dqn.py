@@ -15,20 +15,21 @@ parser = argparse.ArgumentParser(description="DQN algorithm")
 parser.add_argument('--gymenv', type=str, default="CartPole-v1", help='Gym environment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed (default: 42)')
 
-parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 1%)')
-parser.add_argument('--epsilonmin', type=float, default=0.1, help='exploration vs exploitation epsilon-greedy min (default: 0.1%)')
+parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 100%)')
+parser.add_argument('--epsilonmin', type=float, default=0.01, help='exploration vs exploitation epsilon-greedy min (default: 0.1%)')
 parser.add_argument('--epsilondecaysteps', type=float, default=1000, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
 
 parser.add_argument('--gamma', type=float, default=0.99, help='discount factor (default: 0.99)')
-parser.add_argument('--lr', type=float, default=0.0005, help='learning rate (default: 0.001)')
+parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.01)')
 
-parser.add_argument('--replaycapacity', type=int, default=100000, help='Replay buffer capacity (default: 1000)')
-parser.add_argument('--batchsize', type=int, default=10000, help='batch size (default: 100)')
-
+parser.add_argument('--replaycapacity', type=int, default=5000, help='Replay buffer capacity (default: 5000)')
+parser.add_argument('--batchsize', type=int, default=128, help='batch size (default: 128)')
 
 parser.add_argument('--games', type=int, default=1000, help='number of episodes/games (default: 1000)')
+parser.add_argument('--iterations', type=int, default=30000, help='number of iterations (default: 2000)')
+parser.add_argument('--avgnb', type=int, default=40, help='number of episodes to include in the running average (default: 100)')
+
 parser.add_argument('--render', action='store_true',  help='render the environment')
-parser.add_argument('--avgnb', type=int, default=10, help='number of episodes to include in the running average (default: 100)')
 parser.add_argument('--paramaddtext', type=str, default='', help='additional text to add to the filename')
 args = parser.parse_args()
 
@@ -52,6 +53,7 @@ if __name__ == '__main__':
     batch_size = args.batchsize
 
     n_games = args.games
+    max_iterations = args.iterations
     flag_render = args.render
 
     param_add_text = args.paramaddtext
@@ -110,6 +112,7 @@ if __name__ == '__main__':
     
     agent.store_evaluation_state(evaluation_states)
     
+    n_iter = 0
     # iterate over the episodes
     for i in range(n_games):
         done = False
@@ -145,17 +148,25 @@ if __name__ == '__main__':
             # learn and modify the agent policy, and get the loss term and the number of steps of the episode
             loss_item = agent.learn()
 
+
         # save loss and score and compute and print running average for monitoring
         losses.append(loss_item)
         scores.append(score)
-        agent.add_to_tb(score, 'score')
+        agent.add_to_tb('score/train', score, i)
         avg_score = np.mean(scores[-avg_episodes_nb:])
         avg_loss = np.mean(losses[-avg_episodes_nb:])
 
+        # count nb of  iterations
+        n_iter += ep_steps_count
+
         # debugging 
         info_to_log = 'episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,\
-            'average loss %.2f' % avg_loss, 'steps number', ep_steps_count
+            'average loss %.2f' % avg_loss, 'steps number', ep_steps_count, 'iterations number', n_iter
         logger.debug(info_to_log)
+
+        # stop condition
+        if n_iter >= max_iterations:
+            break;
 
     agent.flush_tb()
     

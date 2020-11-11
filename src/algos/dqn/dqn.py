@@ -20,7 +20,7 @@ class DQN(T.nn.Module):
         self.l3 = T.nn.Linear(128, n_actions)
 
         # define optimizer
-        self.optimizer = T.optim.Adam(self.parameters(), lr=lr)
+        self.optimizer = T.optim.RMSprop(self.parameters(), lr=lr, alpha=0.9)
 
         # define loss
         self.loss_fn = T.nn.MSELoss(reduction='mean')
@@ -119,8 +119,8 @@ class Agent():
 
         return loss.item()
     
-    def add_to_tb(self, metric_value, metric_name):
-        self.writer.add_scalar(metric_name, metric_value, self.epoch_nb)
+    def add_to_tb(self, metric_name, metric_value, n_episode):
+        self.writer.add_scalar(metric_name, metric_value, n_episode)
 
 
     def flush_tb(self):

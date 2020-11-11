@@ -68,7 +68,7 @@ if __name__ == '__main__':
     exp_param = alg_name + '_' + env_name + '_lr=' + str(lr) + '_gamma=' + str(gamma) \
         + '_replay=' + str(replay_capacity) + '_batch=' + str(batch_size) +'_eps=' + str(epsilon)
          
-    log_file = 'runs/logs/' + exp_param + '_' + timestampStr +  '.log'
+    log_file = 'reports/logs/' + exp_param + '_' + timestampStr +  '.log'
 
     # set up logging to file
     logging.basicConfig(level=logging.DEBUG,

@@ -28,9 +28,8 @@ parser.add_argument('--batchsize', type=int, default=10000, help='batch size (de
 
 parser.add_argument('--games', type=int, default=1000, help='number of episodes/games (default: 1000)')
 parser.add_argument('--render', action='store_true',  help='render the environment')
-parser.add_argument('--runs', type=int, default=2, help='number of runs (default: 10)')
 parser.add_argument('--avgnb', type=int, default=10, help='number of episodes to include in the running average (default: 100)')
-parser.add_argument('--filenameaddtext', type=str, default='', help='additional text to add to the filename')
+parser.add_argument('--paramaddtext', type=str, default='', help='additional text to add to the filename')
 args = parser.parse_args()
 
 
@@ -54,9 +53,8 @@ if __name__ == '__main__':
 
     n_games = args.games
     flag_render = args.render
-    n_runs = args.runs
 
-    filename_add_text = args.filenameaddtext
+    param_add_text = args.paramaddtext
     
     
     # monitoring
@@ -66,7 +64,7 @@ if __name__ == '__main__':
     timestampStr = dateTimeObj.strftime("%Y%m%d%H%M%S")
 
     exp_param = alg_name + '_' + env_name + '_lr=' + str(lr) + '_gamma=' + str(gamma) \
-        + '_replay=' + str(replay_capacity) + '_batch=' + str(batch_size) +'_eps=' + str(epsilon)
+        + '_replay=' + str(replay_capacity) + '_batch=' + str(batch_size) +'_eps=' + str(epsilon) + param_add_text
          
     log_file = 'reports/logs/' + exp_param + '_' + timestampStr +  '.log'
 

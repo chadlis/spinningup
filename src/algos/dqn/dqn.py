@@ -47,8 +47,6 @@ class Agent():
 
         self.transition_memory = collections.deque(maxlen=replay_capacity)
         self.qfunction = DQN(self.lr, input_dims, n_actions)
-        #print(self.qfunction.layer[0].weight)
-        #exit()
         self.n_actions = n_actions
         self.epoch_nb = 0
         self.writer = SummaryWriter(comment='_'+exp_param)

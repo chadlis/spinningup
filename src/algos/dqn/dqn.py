@@ -60,7 +60,7 @@ class Agent():
         state = T.Tensor(observation)
         probabilities = T.nn.functional.softmax(self.qfunction.forward(state), dim=0)
 
-        if random.uniform(0,100) < self.epsilon:
+        if random.uniform(0,1) < self.epsilon:
             action = T.tensor(random.randint(0, self.n_actions-1))
         else:
             action = T.argmax(probabilities)

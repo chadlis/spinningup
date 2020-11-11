@@ -34,7 +34,7 @@ class DQN(T.nn.Module):
 
 
 class Agent():
-    def __init__(self, input_dims, n_actions, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, replay_capacity=1000, batch_size=100, lr=0.001, gamma=0.99):
+    def __init__(self, input_dims, n_actions, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, replay_capacity=1000, batch_size=100, lr=0.001, gamma=0.99, exp_param=''):
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay_rate = (epsilon - epsilon_min)/epsilon_decay_steps
@@ -51,7 +51,7 @@ class Agent():
         #exit()
         self.n_actions = n_actions
         self.epoch_nb = 0
-        self.writer = SummaryWriter(comment='_lr='+str(lr)+'_gamma='+str(gamma)+'_replay='+str(replay_capacity)+'_batch='+str(batch_size))
+        self.writer = SummaryWriter(comment='_'+exp_param)
 
         self.evaluation_state_memory=[]
         self.evaluation_states=T.Tensor(list([]))
@@ -82,8 +82,7 @@ class Agent():
     def learn(self):
         batch_size = min(self.batch_size, len(self.transition_memory))
         random_batch_idx = random.sample(range(len(self.transition_memory)), batch_size)
-        transitions_array = np.array(self.transition_memory)[random_batch_idx]
-
+        transitions_array = np.array(self.transition_memory, dtype=object)[random_batch_idx]
 
         s_i = T.Tensor(list(transitions_array.T[0]))
 

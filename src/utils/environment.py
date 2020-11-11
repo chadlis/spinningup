@@ -2,13 +2,9 @@ import gym
 import random
 import numpy as np
 
-RANDOM_SEED = 0
+RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 random.seed(RANDOM_SEED)
-#torch.manual_seed(RANDOM_SEED)
-#env.seed(RANDOM_SEED)
-#env.action_space.seed(RANDOM_SEED)
-
 
 def modify_reward(reward, done, env_name):
     if env_name == 'FrozenLake-v0': 

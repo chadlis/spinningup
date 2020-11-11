@@ -13,11 +13,11 @@ from src.utils import environment
 
 parser = argparse.ArgumentParser(description="DQN algorithm")
 parser.add_argument('--gymenv', type=str, default="CartPole-v1", help='Gym environment name')
-parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
+parser.add_argument('--seed', type=int, default=0, help='random seed (default: 42)')
 
 parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 1%)')
 parser.add_argument('--epsilonmin', type=float, default=0.1, help='exploration vs exploitation epsilon-greedy min (default: 0.1%)')
-parser.add_argument('--epsilondecaysteps', type=float, default=1, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
+parser.add_argument('--epsilondecaysteps', type=float, default=1000, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
 
 parser.add_argument('--gamma', type=float, default=0.99, help='discount factor (default: 0.99)')
 parser.add_argument('--lr', type=float, default=0.0005, help='learning rate (default: 0.001)')
@@ -26,7 +26,7 @@ parser.add_argument('--replaycapacity', type=int, default=100000, help='Replay b
 parser.add_argument('--batchsize', type=int, default=10000, help='batch size (default: 100)')
 
 
-parser.add_argument('--games', type=int, default=60, help='number of episodes/games (default: 1000)')
+parser.add_argument('--games', type=int, default=1000, help='number of episodes/games (default: 1000)')
 parser.add_argument('--render', action='store_true',  help='render the environment')
 parser.add_argument('--runs', type=int, default=2, help='number of runs (default: 10)')
 parser.add_argument('--avgnb', type=int, default=10, help='number of episodes to include in the running average (default: 100)')
@@ -35,6 +35,7 @@ args = parser.parse_args()
 
 
 alg_name = 'dqn'
+
     
 if __name__ == '__main__':
 
@@ -64,15 +65,10 @@ if __name__ == '__main__':
     dateTimeObj = datetime.now()
     timestampStr = dateTimeObj.strftime("%Y%m%d%H%M%S")
 
-    fname = alg_name + '_' + env_name + '_' + 'lr' + str(lr) + '_' + 'gamma' + str(gamma) + '_' + str(n_games) + 'games' \
-         + str('' if filename_add_text=='' else '_'+ filename_add_text)
+    fname = alg_name + '_' + env_name + '_lr=' + str(lr) + '_gamma=' + str(gamma) \
+        + '_replay=' + str(replay_capacity) + '_batch='+str(batch_size)
          
-    figure_file_score =  'reports/figures/' + fname + '_' + 'score' + '_' + timestampStr  + '.html'
-    figure_file_loss = 'reports/figures/' + fname + '_' + 'loss' + '_' + timestampStr +  '.html'
     log_file = 'reports/logs/' + fname + '_' + timestampStr +  '.log'
-
-    score_plotter = plotting.Plotter(running_average=True, running_avg_episodes_nb=100, title="Running avg score", x_title="episode", y_title="Running avg score", filepath=figure_file_score)
-    loss_plotter = plotting.Plotter(running_average=True, running_avg_episodes_nb=100, title="Running avg loss", x_title="episode", y_title="Running avg loss", filepath=figure_file_loss)
 
     # set up logging to file
     logging.basicConfig(level=logging.DEBUG,
@@ -97,8 +93,10 @@ if __name__ == '__main__':
     env = environment.make(env_name)
 
     # improve reproducibility
+    np.random.seed(seed)
     env.seed(seed)
-    #np.random.seed(seed)
+    env.action_space.seed(seed)
+
     
     # get the dimensions of the states and actions spaces
     input_dims, n_actions = environment.get_dims(env, env_name)
@@ -110,35 +108,10 @@ if __name__ == '__main__':
     scores = []
     losses = []
     
-
-    # iterate over the episodes to collect evaluation states with a random policy
-    for i in range(1000):
-        done = False
-        # reset the environment to begin the episode
-        observation = env.reset()
-        stored_eval_states_nb = 0
-        while (not done and stored_eval_states_nb < 1000):
-            # preprocess observations if needed
-            observation = environment.process_obs(observation, env_name)
-
-            # use a random policy to choose an action
-            action = env.action_space.sample()
-
-            # make a step in the environment and get the new observation and the reward
-            observation_, reward, done, info = env.step(action)
-
-            # store evaluation state in the agent memory
-            stored_eval_states_nb = agent.store_evaluation_state(observation)
-
-            # make the new observation as the current one
-            observation = observation_
-
-        if stored_eval_states_nb>=1000:
-            break;
+    evaluation_states = environment.collect_evaluation_states(env_name, 1000)
     
-    agent.define_evaluation_states()
+    agent.store_evaluation_state(evaluation_states)
     
-
     # iterate over the episodes
     for i in range(n_games):
         done = False
@@ -154,7 +127,7 @@ if __name__ == '__main__':
                 env.render()
             
             # preprocess observations if needed
-            observation = environment.process_obs(observation, env_name)
+            observation = environment.process_obs(observation, input_dims, env_name)
 
             # use the agent's current policy to choose an action
             action = agent.choose_action(observation)
@@ -187,13 +160,9 @@ if __name__ == '__main__':
             'average loss %.2f' % avg_loss, 'steps number', steps_nb
         logger.debug(info_to_log)
         steps_nb = 0
-    # add score and loss running avg curves to plotter
-    score_plotter.add_curve(scores)
-    loss_plotter.add_curve(losses)
 
     agent.flush_tb()
     
     agent.close_tb()
-    score_plotter.plot()
-    loss_plotter.plot()
+
         

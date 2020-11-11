@@ -5,6 +5,12 @@ from torch.utils.tensorboard import SummaryWriter
 import random
 import collections
 
+RANDOM_SEED = 0
+np.random.seed(RANDOM_SEED)
+random.seed(RANDOM_SEED)
+T.manual_seed(RANDOM_SEED)
+
+
 class DQN(T.nn.Module):
     def __init__(self, lr, input_dims, n_actions):
         super(DQN, self).__init__()
@@ -41,6 +47,8 @@ class Agent():
 
         self.transition_memory = collections.deque(maxlen=replay_capacity)
         self.qfunction = DQN(self.lr, input_dims, n_actions)
+        #print(self.qfunction.layer[0].weight)
+        #exit()
         self.n_actions = n_actions
         self.epoch_nb = 0
         self.writer = SummaryWriter(comment='_lr='+str(lr)+'_gamma='+str(gamma)+'_replay='+str(replay_capacity)+'_batch='+str(batch_size))
@@ -65,14 +73,8 @@ class Agent():
     def store_transitions(self, transition):
         self.transition_memory.append(transition)
 
-    def store_evaluation_state(self, state):
-        self.evaluation_state_memory.append(state)
-        return len(self.evaluation_state_memory)
-
-    def define_evaluation_states(self):
-        random_states_idx = random.sample(range(1000), 100)
-        eval_states = np.array(self.evaluation_state_memory)[random_states_idx]
-        self.evaluation_states =  T.Tensor(list(eval_states))
+    def store_evaluation_state(self, states):
+        self.evaluation_states =  T.Tensor(list(states))
 
     def evaluate(self):
         return T.mean(T.max(self.qfunction.forward(self.evaluation_states), dim=1)[0])
@@ -105,7 +107,7 @@ class Agent():
 
         y_i = r_i + self.gamma*T.mul(q_ip1_max, s_ip1_not_terminal)
         
-        loss = self.qfunction.loss_fn(y_i, q_i_a_i)
+        loss = self.qfunction.loss_fn(q_i_a_i, y_i)
 
 
         self.epoch_nb += 1

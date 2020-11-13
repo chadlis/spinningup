@@ -15,6 +15,10 @@ parser = argparse.ArgumentParser(description="DQN algorithm")
 parser.add_argument('--gymenv', type=str, default="CartPole-v1", help='Gym environment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed (default: 42)')
 
+parser.add_argument('--ddqn', action='store_true',  help='Use Double DQN variante (default:False)')
+parser.add_argument('--prioritisedreplay', action='store_true',  help='Use Prerioritised Replay (default:False)')
+parser.add_argument('--multistep', action='store_true',  help='Use Multi-step (default:False)')
+
 parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 100%)')
 parser.add_argument('--epsilonmin', type=float, default=0.01, help='exploration vs exploitation epsilon-greedy min (default: 0.1%)')
 parser.add_argument('--epsilondecaysteps', type=float, default=10000, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
@@ -42,6 +46,11 @@ if __name__ == '__main__':
     # algorithm and parameters
     env_name = args.gymenv
     seed = args.seed
+
+    ddqn = args.ddqn
+    prioritised_replay = args.prioritisedreplay
+    multistep = args.multistep
+
     epsilon = args.epsilon
     epsilon_min = args.epsilonmin
     epsilon_decay_steps = args.epsilondecaysteps
@@ -107,7 +116,8 @@ if __name__ == '__main__':
     input_dims, n_actions = environment.get_dims(env, env_name)
 
     # initialize the agent with the choosen parameters
-    agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
+    agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, ddqn=ddqn, \
+        prioritised_replay=prioritised_replay, multistep=multistep, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
     
     # scores and losses memory array for monitoring
     scores = []

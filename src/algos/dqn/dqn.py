@@ -37,7 +37,7 @@ class DQN(T.nn.Module):
 
 
 class Agent():
-    def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
+    def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, ddqn=False, prioritised_replay=False, multistep=False, replace_target=1000, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
         self.action_space = [i for i in range(n_actions)]
         
         self.epsilon = epsilon
@@ -58,7 +58,11 @@ class Agent():
         self.memory_count = 0
 
         self.qfct_eval = DQN(self.lr, input_dims, n_actions)
+        self.qfct_next = DQN(self.lr, input_dims, n_actions)
+
         self.n_actions = n_actions
+        self.replace_target = replace_target
+
         self.learning_iter = 0
         self.writer = SummaryWriter(comment='_'+exp_param)
 
@@ -97,13 +101,15 @@ class Agent():
         action_batch = self.action_memory[batch]
         return state_batch, new_state_batch, reward_batch, terminal_batch, action_batch
     
+    def replace_target_network(self):
+        if self.learning_iter % self.replace_target == 0:
+            self.qfct_next.load_state_dict(self.qfct_eval.state_dict())
 
     def learn(self):
         if self.memory_count < self.batch_size:
             return 0
 
         self.qfct_eval.optimizer.zero_grad()
-
 
         state_batch, new_state_batch, reward_batch, terminal_batch, action_batch = self.sample_transitions()
 

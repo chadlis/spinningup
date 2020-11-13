@@ -7,7 +7,6 @@ import collections
 
 RANDOM_SEED = 0
 np.random.seed(RANDOM_SEED)
-random.seed(RANDOM_SEED)
 T.manual_seed(RANDOM_SEED)
 
 
@@ -15,16 +14,20 @@ class DQN(T.nn.Module):
     def __init__(self, lr, input_dims, n_actions):
         super(DQN, self).__init__()
         # define network architecture
-        self.l1 = T.nn.Linear(input_dims, 128)
-        self.l2 = T.nn.Linear(128, 128)
-        self.l3 = T.nn.Linear(128, n_actions)
+        self.l1 = T.nn.Linear(input_dims, 256)
+        self.l2 = T.nn.Linear(256, 256)
+        self.l3 = T.nn.Linear(256, n_actions)
 
         # define optimizer
-        self.optimizer = T.optim.RMSprop(self.parameters(), lr=lr, alpha=0.9)
+        self.optimizer = T.optim.Adam(self.parameters(), lr=lr)
 
         # define loss
-        self.loss_fn = T.nn.MSELoss(reduction='mean')
+        self.loss_fn = T.nn.MSELoss()
         
+        # send to GPU if availabe
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.to(self.device)       
+    
     # forward pass
     def forward(self, state):
         x = T.tanh(self.l1(state))
@@ -34,7 +37,9 @@ class DQN(T.nn.Module):
 
 
 class Agent():
-    def __init__(self, input_dims, n_actions, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, replay_capacity=1000, batch_size=100, lr=0.001, gamma=0.99, exp_param=''):
+    def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
+        self.action_space = [i for i in range(n_actions)]
+        
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay_rate = (epsilon - epsilon_min)/epsilon_decay_steps
@@ -45,82 +50,87 @@ class Agent():
         self.replay_capacity = replay_capacity
         self.batch_size = batch_size
 
-        self.transition_memory = collections.deque(maxlen=replay_capacity)
-        self.qfunction = DQN(self.lr, input_dims, n_actions)
+        self.state_memory = np.zeros((self.replay_capacity, input_dims), dtype=np.float32)
+        self.new_state_memory = np.zeros((self.replay_capacity, input_dims), dtype=np.float32)
+        self.action_memory = np.zeros(self.replay_capacity, dtype=np.int32)
+        self.reward_memory = np.zeros(self.replay_capacity, dtype=np.float32)
+        self.terminal_memory = np.zeros(self.replay_capacity, dtype=np.bool)
+        self.memory_count = 0
+
+        self.qfct_eval = DQN(self.lr, input_dims, n_actions)
         self.n_actions = n_actions
-        self.epoch_nb = 0
+        self.learning_iter = 0
         self.writer = SummaryWriter(comment='_'+exp_param)
 
-        self.evaluation_state_memory=[]
-        self.evaluation_states=T.Tensor(list([]))
+        self.evaluation_states=T.Tensor(list([])).to(self.qfct_eval.device)
 
-    def choose_action(self, observation):
-        state = T.Tensor(observation)
-        probabilities = T.nn.functional.softmax(self.qfunction.forward(state), dim=0)
 
-        if random.uniform(0,1) < self.epsilon:
-            action = T.tensor(random.randint(0, self.n_actions-1))
+    def store_transitions(self, state, action, reward, state_, done):
+        idx = self.memory_count % self.replay_capacity
+
+        self.state_memory[idx] = state
+        self.action_memory[idx] = action
+        self.new_state_memory[idx] = state_
+        self.reward_memory[idx] = reward
+        self.terminal_memory[idx] = done
+
+        self.memory_count += 1
+    
+    def choose_action(self, state, greedy=False):
+        if greedy or np.random.random() > self.epsilon:
+            state = T.Tensor(state).to(self.qfct_eval.device)
+            actions_values = self.qfct_eval.forward(state)
+            action = T.argmax(actions_values).item()
+            self.epsilon = min(self.epsilon - self.epsilon_decay_rate , self.epsilon_min)
         else:
-            action = T.argmax(probabilities)
-        
-        #decay epislon linearly from epsilon -> epsilon_min
-        self.epsilon = max(self.epsilon - self.epsilon_decay_rate, self.epsilon_min)
+            action = np.random.choice(self.action_space)
+        return action
 
-        return action.item()
 
-    def store_transitions(self, transition):
-        self.transition_memory.append(transition)
-
-    def store_evaluation_state(self, states):
-        self.evaluation_states =  T.Tensor(list(states))
-
-    def evaluate(self):
-        return T.mean(T.max(self.qfunction.forward(self.evaluation_states), dim=1)[0])
+    def sample_transitions(self):
+        memory_size = min(self.replay_capacity, self.memory_count)
+        batch = np.random.choice(memory_size, self.batch_size, replace=False)
+        state_batch = T.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
+        new_state_batch = T.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
+        reward_batch = T.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
+        terminal_batch = T.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
+        action_batch = self.action_memory[batch]
+        return state_batch, new_state_batch, reward_batch, terminal_batch, action_batch
+    
 
     def learn(self):
-        batch_size = min(self.batch_size, len(self.transition_memory))
-        random_batch_idx = random.sample(range(len(self.transition_memory)), batch_size)
-        transitions_array = np.array(self.transition_memory, dtype=object)[random_batch_idx]
+        if self.memory_count < self.batch_size:
+            return 0
 
-        s_i = T.Tensor(list(transitions_array.T[0]))
+        self.qfct_eval.optimizer.zero_grad()
 
-        a_i = list(transitions_array.T[1])
-        a_i_np = np.array(a_i)
-        a_i_ohe = np.zeros((a_i_np.size, max(a_i_np.max(),1)+1))
-        a_i_ohe[np.arange(a_i_np.size), a_i_np] = 1
-        a_i = T.Tensor([a_i_ohe])
- 
-        r_i = T.Tensor([list(transitions_array.T[2])])
 
-        s_ip1 = T.Tensor(list(transitions_array.T[3]))
+        state_batch, new_state_batch, reward_batch, terminal_batch, action_batch = self.sample_transitions()
 
-        s_ip1_not_terminal = T.Tensor([list(transitions_array.T[4])])
+        batch_indices = np.arange(self.batch_size, dtype=np.int32)
+
+        q_eval = self.qfct_eval.forward(state_batch)[batch_indices, action_batch]
+
+        q_next = self.qfct_eval.forward(new_state_batch)
+        q_next[terminal_batch] = 0
+
+        q_target = reward_batch + self.gamma * T.max(q_next, dim=1)[0]
         
-        q_i = self.qfunction.forward(s_i)
-        q_i_a_i = T.sum(T.mul(q_i, a_i), 2)
+        loss = self.qfct_eval.loss_fn(q_target, q_eval).to(self.qfct_eval.device)
         
-        q_ip1 = self.qfunction.forward(s_ip1)
-        q_ip1_max,_ = T.max(q_ip1, dim=1)
-
-        y_i = r_i + self.gamma*T.mul(q_ip1_max, s_ip1_not_terminal)
+        self.writer.add_scalar("Loss/train", loss, self.learning_iter)
+        self.writer.add_scalar("q_value/train", T.mean(q_eval), self.learning_iter)
+        self.writer.add_scalar("q_value/test", self.evaluate(), self.learning_iter)
         
-        loss = self.qfunction.loss_fn(q_i_a_i, y_i)
-
-
-        self.epoch_nb += 1
-        self.writer.add_scalar("Loss/train", loss, self.epoch_nb)
-        self.writer.add_scalar("q_value/test", self.evaluate(), self.epoch_nb)
-
         loss.backward()
-
-        self.qfunction.optimizer.step()
-        self.qfunction.optimizer.zero_grad()
+        self.qfct_eval.optimizer.step()
         
-
+        self.learning_iter += 1
         return loss.item()
     
     def add_to_tb(self, metric_name, metric_value, n_episode):
         self.writer.add_scalar(metric_name, metric_value, n_episode)
+        print(metric_name, metric_value, n_episode)
 
 
     def flush_tb(self):
@@ -128,3 +138,9 @@ class Agent():
 
     def close_tb(self):
         self.writer.close()
+
+    def store_evaluation_state(self, states):
+        self.evaluation_states =  T.Tensor(list(states)).to(self.qfct_eval.device)
+
+    def evaluate(self):
+        return T.mean(T.max(self.qfct_eval.forward(self.evaluation_states), dim=1)[0])

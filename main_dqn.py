@@ -17,16 +17,16 @@ parser.add_argument('--seed', type=int, default=0, help='random seed (default: 4
 
 parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 100%)')
 parser.add_argument('--epsilonmin', type=float, default=0.01, help='exploration vs exploitation epsilon-greedy min (default: 0.1%)')
-parser.add_argument('--epsilondecaysteps', type=float, default=1000, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
+parser.add_argument('--epsilondecaysteps', type=float, default=10000, help='exploration vs exploitation epsilon-greedy decay steps (default: 1000)')
 
-parser.add_argument('--gamma', type=float, default=0.99, help='discount factor (default: 0.99)')
-parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.01)')
+parser.add_argument('--gamma', type=float, default=0.8, help='discount factor (default: 0.99)')
+parser.add_argument('--lr', type=float, default=0.0001, help='learning rate (default: 0.01)')
 
-parser.add_argument('--replaycapacity', type=int, default=5000, help='Replay buffer capacity (default: 5000)')
-parser.add_argument('--batchsize', type=int, default=128, help='batch size (default: 128)')
+parser.add_argument('--replaycapacity', type=int, default=10000, help='Replay buffer capacity (default: 5000)')
+parser.add_argument('--batchsize', type=int, default=512, help='batch size (default: 128)')
 
-parser.add_argument('--games', type=int, default=1000, help='number of episodes/games (default: 1000)')
-parser.add_argument('--iterations', type=int, default=30000, help='number of iterations (default: 2000)')
+parser.add_argument('--games', type=int, default=100000, help='number of episodes/games (default: 1000)')
+parser.add_argument('--iterations', type=int, default=500000, help='number of iterations (default: 2000)')
 parser.add_argument('--avgnb', type=int, default=40, help='number of episodes to include in the running average (default: 100)')
 
 parser.add_argument('--render', action='store_true',  help='render the environment')
@@ -92,17 +92,22 @@ if __name__ == '__main__':
     # initialize environment
     env = environment.make(env_name)
 
-    # improve reproducibility
+    # initialize test environment
+    env_test = environment.make(env_name)
+
+    # reproducibility
     np.random.seed(seed)
     env.seed(seed)
     env.action_space.seed(seed)
 
+    env_test.seed(seed+10)
+    env_test.action_space.seed(seed+10)
     
     # get the dimensions of the states and actions spaces
     input_dims, n_actions = environment.get_dims(env, env_name)
 
     # initialize the agent with the choosen parameters
-    agent = Agent(input_dims=input_dims, n_actions=n_actions, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, replay_capacity=replay_capacity, batch_size=batch_size, gamma=gamma, lr=lr, exp_param=exp_param)
+    agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
     
     # scores and losses memory array for monitoring
     scores = []
@@ -123,8 +128,9 @@ if __name__ == '__main__':
         observation = env.reset()
 
         while not done:
+            n_iter += 1
             ep_steps_count += 1
-
+            
             if flag_render:
                 env.render()    
             
@@ -138,9 +144,10 @@ if __name__ == '__main__':
             observation_, reward, done, info = env.step(action)
             score += reward
 
+            reward = environment.modify_reward(reward, done, env_name)
+
             # store transition in the agent's transition memory
-            transition = (observation, action, reward, observation_, int(not done))
-            agent.store_transitions(transition)
+            agent.store_transitions(observation, action, reward, environment.process_obs(observation_, input_dims, env_name), done)
 
             # make the new observation as the current one
             observation = observation_
@@ -148,28 +155,48 @@ if __name__ == '__main__':
             # learn and modify the agent policy, and get the loss term and the number of steps of the episode
             loss_item = agent.learn()
 
-
         # save loss and score and compute and print running average for monitoring
         losses.append(loss_item)
         scores.append(score)
-        agent.add_to_tb('score/train', score, i)
+        agent.add_to_tb('score/train', score, n_iter)
         avg_score = np.mean(scores[-avg_episodes_nb:])
         avg_loss = np.mean(losses[-avg_episodes_nb:])
-
-        # count nb of  iterations
-        n_iter += ep_steps_count
 
         # debugging 
         info_to_log = 'episode ', i, 'score %.2f' % score, 'average score %.2f' % avg_score,\
             'average loss %.2f' % avg_loss, 'steps number', ep_steps_count, 'iterations number', n_iter
         logger.debug(info_to_log)
 
-        # stop condition
+        if i%10==0:
+            scores_test = []
+            for i_test in range(100):
+                done = False
+                score_test = 0
+
+                # reset the environment to begin the episode
+                observation = env_test.reset()
+
+                while not done:                    
+                    # preprocess observations if needed
+                    observation = environment.process_obs(observation, input_dims, env_name)
+
+                    # use the agent's current policy to choose an action
+                    action = agent.choose_action(observation, greedy=True)
+
+                    # make a step in the environment and get the new observation and the reward
+                    observation_, reward, done, info = env_test.step(action)
+                    score_test += reward
+                    
+                    reward = environment.modify_reward(reward, done, env_name)
+
+                    # make the new observation as the current one
+                    observation = observation_
+                scores_test.append(score_test)
+            agent.add_to_tb('score/test', np.mean(scores_test), n_iter)
+
+
+        # stop condition (if max iterations or loss=0 for 50 episodes)
         if n_iter >= max_iterations:
+            agent.flush_tb()
+            agent.close_tb()
             break;
-
-    agent.flush_tb()
-    
-    agent.close_tb()
-
-        

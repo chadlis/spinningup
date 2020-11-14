@@ -94,3 +94,6 @@ runs/
 
 # full logs
 reports/logs/
+
+#ignore workspace file
+*.code-workspace

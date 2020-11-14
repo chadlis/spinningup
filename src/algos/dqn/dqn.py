@@ -39,7 +39,8 @@ class DQN(T.nn.Module):
 class Agent():
     def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, ddqn=False, prioritised_replay=False, multistep=False, replace_target=1000, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
         self.action_space = [i for i in range(n_actions)]
-        
+        self.n_actions = n_actions
+
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay_rate = (epsilon - epsilon_min)/epsilon_decay_steps
@@ -58,9 +59,12 @@ class Agent():
         self.memory_count = 0
 
         self.qfct_eval = DQN(self.lr, input_dims, n_actions)
-        self.qfct_next = DQN(self.lr, input_dims, n_actions)
+        self.qfct_next = DQN(self.lr, input_dims, n_actions) #DDQN
 
-        self.n_actions = n_actions
+        self.ddqn=ddqn
+        self.prioritised_replay=prioritised_replay
+        self.multistep=multistep
+
         self.replace_target = replace_target
 
         self.learning_iter = 0
@@ -111,21 +115,30 @@ class Agent():
 
         self.qfct_eval.optimizer.zero_grad()
 
+        self.replace_target_network()
+
         state_batch, new_state_batch, reward_batch, terminal_batch, action_batch = self.sample_transitions()
 
         batch_indices = np.arange(self.batch_size, dtype=np.int32)
 
-        q_eval = self.qfct_eval.forward(state_batch)[batch_indices, action_batch]
+        q_eval = self.qfct_eval.forward(state_batch)
+        q_pred = self.qfct_eval.forward(state_batch)[batch_indices, action_batch]
 
-        q_next = self.qfct_eval.forward(new_state_batch)
-        q_next[terminal_batch] = 0
+        if self.ddqn:
+            q_next = self.qfct_next.forward(new_state_batch)
+            q_next[terminal_batch] = 0
+            max_actions = T.argmax(q_eval, dim=1)
+            q_target = reward_batch + self.gamma * q_next[batch_indices, max_actions]
 
-        q_target = reward_batch + self.gamma * T.max(q_next, dim=1)[0]
+        else:
+            q_next = self.qfct_next.forward(new_state_batch)
+            q_next[terminal_batch] = 0
+            q_target = reward_batch + self.gamma * T.max(q_next, dim=1)[0]
         
-        loss = self.qfct_eval.loss_fn(q_target, q_eval).to(self.qfct_eval.device)
+        loss = self.qfct_eval.loss_fn(q_target, q_pred).to(self.qfct_eval.device)
         
         self.writer.add_scalar("Loss/train", loss, self.learning_iter)
-        self.writer.add_scalar("q_value/train", T.mean(q_eval), self.learning_iter)
+        self.writer.add_scalar("q_value/train", T.mean(q_pred), self.learning_iter)
         self.writer.add_scalar("q_value/test", self.evaluate(), self.learning_iter)
         
         loss.backward()

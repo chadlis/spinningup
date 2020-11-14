@@ -29,6 +29,9 @@ parser.add_argument('--lr', type=float, default=0.0001, help='learning rate (def
 parser.add_argument('--replaycapacity', type=int, default=10000, help='Replay buffer capacity (default: 5000)')
 parser.add_argument('--batchsize', type=int, default=512, help='batch size (default: 128)')
 
+parser.add_argument('--replacetarget', type=int, default=100, help='DDQN - Number of iterations to replace target(default:1000)')
+
+
 parser.add_argument('--games', type=int, default=100000, help='number of episodes/games (default: 1000)')
 parser.add_argument('--iterations', type=int, default=500000, help='number of iterations (default: 2000)')
 parser.add_argument('--avgnb', type=int, default=40, help='number of episodes to include in the running average (default: 100)')
@@ -38,7 +41,7 @@ parser.add_argument('--paramaddtext', type=str, default='', help='additional tex
 args = parser.parse_args()
 
 
-alg_name = 'dqn'
+
 
     
 if __name__ == '__main__':
@@ -51,6 +54,11 @@ if __name__ == '__main__':
     prioritised_replay = args.prioritisedreplay
     multistep = args.multistep
 
+    if ddqn:
+        alg_name = 'ddqn'
+    else:
+        alg_name = 'dqn'
+
     epsilon = args.epsilon
     epsilon_min = args.epsilonmin
     epsilon_decay_steps = args.epsilondecaysteps
@@ -60,6 +68,9 @@ if __name__ == '__main__':
 
     replay_capacity = args.replaycapacity
     batch_size = args.batchsize
+
+    #ddqn
+    replacetarget = args.replacetarget
 
     n_games = args.games
     max_iterations = args.iterations
@@ -116,7 +127,7 @@ if __name__ == '__main__':
     input_dims, n_actions = environment.get_dims(env, env_name)
 
     # initialize the agent with the choosen parameters
-    agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, ddqn=ddqn, \
+    agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, replace_target=replacetarget, ddqn=ddqn, \
         prioritised_replay=prioritised_replay, multistep=multistep, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
     
     # scores and losses memory array for monitoring

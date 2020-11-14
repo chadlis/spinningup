@@ -54,10 +54,14 @@ if __name__ == '__main__':
     prioritised_replay = args.prioritisedreplay
     multistep = args.multistep
 
+    alg_name = 'dqn'
     if ddqn:
-        alg_name = 'ddqn'
-    else:
-        alg_name = 'dqn'
+        alg_name = 'd' + alg_name
+    if prioritised_replay:
+        alg_name += '+priorised'
+    if multistep:
+        alg_name += '+multistep'
+
 
     epsilon = args.epsilon
     epsilon_min = args.epsilonmin

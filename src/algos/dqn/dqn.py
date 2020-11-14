@@ -96,14 +96,38 @@ class Agent():
 
 
     def sample_transitions(self):
+        #!TODO use a binary heap structure 
+
         memory_size = min(self.replay_capacity, self.memory_count)
-        batch = np.random.choice(memory_size, self.batch_size, replace=False)
+
+        if self.prioritised_replay: 
+            state_memory = T.tensor(self.state_memory[:memory_size]).to(self.qfct_eval.device)
+            new_state_memory = T.tensor(self.new_state_memory[:memory_size]).to(self.qfct_eval.device)
+            reward_memory = T.tensor(self.reward_memory[:memory_size]).to(self.qfct_eval.device)
+            terminal_memory = T.tensor(self.terminal_memory[:memory_size]).to(self.qfct_eval.device) 
+            action_memory = self.action_memory[:memory_size]
+
+            memory_indices = [i for i in range(memory_size)]
+            q_pred = self.qfct_eval.forward(state_memory)[memory_indices, action_memory]
+            q_next = self.qfct_eval.forward(new_state_memory)
+            q_next[terminal_memory] = 0
+            q_target = reward_memory + self.gamma * T.max(q_next, dim=1)[0]
+            TD = - T.abs(q_pred-q_target).detach().numpy()
+            TD_argsort = np.argsort(TD)
+            batch = TD_argsort[:self.batch_size]
+
+        else:
+            batch = np.random.choice(memory_size, self.batch_size, replace=False)
+
         state_batch = T.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
         new_state_batch = T.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
         reward_batch = T.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
         terminal_batch = T.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
         action_batch = self.action_memory[batch]
+
         return state_batch, new_state_batch, reward_batch, terminal_batch, action_batch
+        
+        
     
     def replace_target_network(self):
         if self.learning_iter % self.replace_target == 0:
@@ -123,7 +147,7 @@ class Agent():
 
         q_eval = self.qfct_eval.forward(state_batch)
         q_pred = self.qfct_eval.forward(state_batch)[batch_indices, action_batch]
-
+    
         if self.ddqn:
             q_next = self.qfct_next.forward(new_state_batch)
             q_next[terminal_batch] = 0

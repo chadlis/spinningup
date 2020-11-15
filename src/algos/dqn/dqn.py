@@ -1,5 +1,5 @@
 import numpy as np
-import torch as T
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 import random
@@ -7,31 +7,31 @@ import collections
 
 RANDOM_SEED = 0
 np.random.seed(RANDOM_SEED)
-T.manual_seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
 
 
-class DQN(T.nn.Module):
+class DQN(torch.nn.Module):
     def __init__(self, lr, input_dims, n_actions):
         super(DQN, self).__init__()
         # define network architecture
-        self.l1 = T.nn.Linear(input_dims, 256)
-        self.l2 = T.nn.Linear(256, 256)
-        self.l3 = T.nn.Linear(256, n_actions)
+        self.l1 = torch.nn.Linear(input_dims, 256)
+        self.l2 = torch.nn.Linear(256, 256)
+        self.l3 = torch.nn.Linear(256, n_actions)
 
         # define optimizer
-        self.optimizer = T.optim.Adam(self.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
         # define loss
-        self.loss_fn = T.nn.MSELoss()
+        self.loss_fn = torch.nn.MSELoss()
         
         # send to GPU if availabe
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)       
     
     # forward pass
     def forward(self, state):
-        x = T.tanh(self.l1(state))
-        x = T.tanh(self.l2(x))
+        x = torch.tanh(self.l1(state))
+        x = torch.tanh(self.l2(x))
         x = self.l3(x)
         return x
 
@@ -70,7 +70,7 @@ class Agent():
         self.learning_iter = 0
         self.writer = SummaryWriter(comment='_'+exp_param)
 
-        self.evaluation_states=T.Tensor(list([])).to(self.qfct_eval.device)
+        self.evaluation_states=torch.Tensor(list([])).to(self.qfct_eval.device)
 
 
     def store_transitions(self, state, action, reward, state_, done):
@@ -86,9 +86,9 @@ class Agent():
     
     def choose_action(self, state, greedy=False):
         if greedy or np.random.random() > self.epsilon:
-            state = T.Tensor(state).to(self.qfct_eval.device)
+            state = torch.Tensor(state).to(self.qfct_eval.device)
             actions_values = self.qfct_eval.forward(state)
-            action = T.argmax(actions_values).item()
+            action = torch.argmax(actions_values).item()
             self.epsilon = min(self.epsilon - self.epsilon_decay_rate , self.epsilon_min)
         else:
             action = np.random.choice(self.action_space)
@@ -101,28 +101,28 @@ class Agent():
         memory_size = min(self.replay_capacity, self.memory_count)
 
         if self.prioritised_replay: 
-            state_memory = T.tensor(self.state_memory[:memory_size]).to(self.qfct_eval.device)
-            new_state_memory = T.tensor(self.new_state_memory[:memory_size]).to(self.qfct_eval.device)
-            reward_memory = T.tensor(self.reward_memory[:memory_size]).to(self.qfct_eval.device)
-            terminal_memory = T.tensor(self.terminal_memory[:memory_size]).to(self.qfct_eval.device) 
+            state_memory = torch.tensor(self.state_memory[:memory_size]).to(self.qfct_eval.device)
+            new_state_memory = torch.tensor(self.new_state_memory[:memory_size]).to(self.qfct_eval.device)
+            reward_memory = torch.tensor(self.reward_memory[:memory_size]).to(self.qfct_eval.device)
+            terminal_memory = torch.tensor(self.terminal_memory[:memory_size]).to(self.qfct_eval.device) 
             action_memory = self.action_memory[:memory_size]
 
             memory_indices = [i for i in range(memory_size)]
             q_pred = self.qfct_eval.forward(state_memory)[memory_indices, action_memory]
             q_next = self.qfct_eval.forward(new_state_memory)
             q_next[terminal_memory] = 0
-            q_target = reward_memory + self.gamma * T.max(q_next, dim=1)[0]
-            TD = - T.abs(q_pred-q_target).detach().numpy()
+            q_target = reward_memory + self.gamma * torch.max(q_next, dim=1)[0]
+            TD = - torch.abs(q_pred-q_target).detach().numpy()
             TD_argsort = np.argsort(TD)
             batch = TD_argsort[:self.batch_size]
 
         else:
             batch = np.random.choice(memory_size, self.batch_size, replace=False)
 
-        state_batch = T.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
-        new_state_batch = T.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
-        reward_batch = T.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
-        terminal_batch = T.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
+        state_batch = torch.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
+        new_state_batch = torch.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
+        reward_batch = torch.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
+        terminal_batch = torch.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
         action_batch = self.action_memory[batch]
 
         return state_batch, new_state_batch, reward_batch, terminal_batch, action_batch
@@ -151,18 +151,18 @@ class Agent():
         if self.ddqn:
             q_next = self.qfct_next.forward(new_state_batch)
             q_next[terminal_batch] = 0
-            max_actions = T.argmax(q_eval, dim=1)
+            max_actions = torch.argmax(q_eval, dim=1)
             q_target = reward_batch + self.gamma * q_next[batch_indices, max_actions]
 
         else:
             q_next = self.qfct_next.forward(new_state_batch)
             q_next[terminal_batch] = 0
-            q_target = reward_batch + self.gamma * T.max(q_next, dim=1)[0]
+            q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
         
         loss = self.qfct_eval.loss_fn(q_target, q_pred).to(self.qfct_eval.device)
         
         self.writer.add_scalar("Loss/train", loss, self.learning_iter)
-        self.writer.add_scalar("q_value/train", T.mean(q_pred), self.learning_iter)
+        self.writer.add_scalar("q_value/train", torch.mean(q_pred), self.learning_iter)
         self.writer.add_scalar("q_value/test", self.evaluate(), self.learning_iter)
         
         loss.backward()
@@ -183,7 +183,7 @@ class Agent():
         self.writer.close()
 
     def store_evaluation_state(self, states):
-        self.evaluation_states =  T.Tensor(list(states)).to(self.qfct_eval.device)
+        self.evaluation_states =  torch.Tensor(list(states)).to(self.qfct_eval.device)
 
     def evaluate(self):
-        return T.mean(T.max(self.qfct_eval.forward(self.evaluation_states), dim=1)[0])
+        return torch.mean(torch.max(self.qfct_eval.forward(self.evaluation_states), dim=1)[0])

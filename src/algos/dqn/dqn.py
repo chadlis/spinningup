@@ -37,7 +37,7 @@ class DQN(torch.nn.Module):
 
 
 class Agent():
-    def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, ddqn=False, prioritised_replay=False, multistep=False, replace_target=1000, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
+    def __init__(self, input_dims, n_actions, lr, gamma, replay_capacity, batch_size, ddqn=False, prioritised_replay=False, prioritised_replay_alpha=0.8, prioritised_replay_beta=1, multistep=False, replace_target=1000, epsilon=1, epsilon_min=0.1, epsilon_decay_steps=1000, exp_param=''):
         self.action_space = [i for i in range(n_actions)]
         self.n_actions = n_actions
 
@@ -63,6 +63,11 @@ class Agent():
 
         self.ddqn=ddqn
         self.prioritised_replay=prioritised_replay
+        self.priority_memory = np.ones(self.replay_capacity, dtype=np.float32)
+        self.prioritised_replay_alpha=prioritised_replay_alpha
+        self.prioritised_replay_beta=prioritised_replay_beta
+        self.is_weights_memory = np.ones(self.replay_capacity, dtype=np.float32)
+        
         self.multistep=multistep
 
         self.replace_target = replace_target
@@ -75,15 +80,25 @@ class Agent():
 
     def store_transitions(self, state, action, reward, state_, done):
         idx = self.memory_count % self.replay_capacity
+        self.memory_count += 1
 
         self.state_memory[idx] = state
         self.action_memory[idx] = action
         self.new_state_memory[idx] = state_
         self.reward_memory[idx] = reward
         self.terminal_memory[idx] = done
+        self.priority_memory[idx] = np.max(self.priority_memory[:min(self.memory_count, self.replay_capacity)])
+        
 
-        self.memory_count += 1
-    
+        # priorities
+        #tfstate = torch.Tensor(state).to(self.qfct_eval.device)
+        #q_pred = self.qfct_eval.forward(tfstate)[action].detach()
+        #tfstate_ = torch.Tensor(state_)
+        #q_next = self.qfct_eval.forward(tfstate_).detach()
+        #q_target = reward + self.gamma * torch.max(q_next) * (1-int(done))
+        #self.priority_memory[idx] = torch.abs(q_pred-q_target)
+        
+
     def choose_action(self, state, greedy=False):
         if greedy or np.random.random() > self.epsilon:
             state = torch.Tensor(state).to(self.qfct_eval.device)
@@ -101,31 +116,42 @@ class Agent():
         memory_size = min(self.replay_capacity, self.memory_count)
 
         if self.prioritised_replay: 
-            state_memory = torch.tensor(self.state_memory[:memory_size]).to(self.qfct_eval.device)
-            new_state_memory = torch.tensor(self.new_state_memory[:memory_size]).to(self.qfct_eval.device)
-            reward_memory = torch.tensor(self.reward_memory[:memory_size]).to(self.qfct_eval.device)
-            terminal_memory = torch.tensor(self.terminal_memory[:memory_size]).to(self.qfct_eval.device) 
-            action_memory = self.action_memory[:memory_size]
+            # state_memory = torch.tensor(self.state_memory[:memory_size]).to(self.qfct_eval.device)
+            # new_state_memory = torch.tensor(self.new_state_memory[:memory_size]).to(self.qfct_eval.device)
+            # reward_memory = torch.tensor(self.reward_memory[:memory_size]).to(self.qfct_eval.device)
+            # terminal_memory = torch.tensor(self.terminal_memory[:memory_size]).to(self.qfct_eval.device) 
+            # action_memory = self.action_memory[:memory_size]
 
             memory_indices = [i for i in range(memory_size)]
-            q_pred = self.qfct_eval.forward(state_memory)[memory_indices, action_memory]
-            q_next = self.qfct_eval.forward(new_state_memory)
-            q_next[terminal_memory] = 0
-            q_target = reward_memory + self.gamma * torch.max(q_next, dim=1)[0]
-            TD = - torch.abs(q_pred-q_target).detach().numpy()
-            TD_argsort = np.argsort(TD)
-            batch = TD_argsort[:self.batch_size]
+            #q_pred = self.qfct_eval.forward(state_memory)[memory_indices, action_memory]
+            #q_next = self.qfct_eval.forward(new_state_memory)
+            #q_next[terminal_memory] = 0
+            #q_target = reward_memory + self.gamma * torch.max(q_next, dim=1)[0]
+            #TD = - torch.abs(q_pred-q_target).detach().numpy()
+            #TD_argsort = np.argsort(TD)
+            #batch = TD_argsort[:self.batch_size]
+
+            priorities = self.priority_memory[:memory_size]
+            
+            priorities = 1/(np.argsort(np.argsort(-priorities))+1)
+
+            probabilites = np.power(priorities, self.prioritised_replay_alpha)
+            probabilites = probabilites/np.sum(probabilites)
+
+            batch = np.random.choice(memory_indices, self.batch_size, p=probabilites, replace=False) #!TODO no replacement ?
+
+            self.is_weights_memory[batch] = np.power((memory_size*probabilites[batch]),(-self.prioritised_replay_beta)) / np.max(self.is_weights_memory)
+
+            # prioritised_replay_alpha = 1
+            # TD = torch.abs(q_pred-q_target).detach().numpy()
+            # TD_alpha = np.power(TD, prioritised_replay_alpha)
+            # TD_prob = TD_alpha/np.sum(TD_alpha)
+            # batch = np.random.choice(memory_indices, self.batch_size, p=TD_prob) #!TODO no replacement ?
 
         else:
             batch = np.random.choice(memory_size, self.batch_size, replace=False)
 
-        state_batch = torch.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
-        new_state_batch = torch.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
-        reward_batch = torch.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
-        terminal_batch = torch.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
-        action_batch = self.action_memory[batch]
-
-        return state_batch, new_state_batch, reward_batch, terminal_batch, action_batch
+        return batch
         
         
     
@@ -141,7 +167,13 @@ class Agent():
 
         self.replace_target_network()
 
-        state_batch, new_state_batch, reward_batch, terminal_batch, action_batch = self.sample_transitions()
+        batch = self.sample_transitions()
+
+        state_batch = torch.tensor(self.state_memory[batch]).to(self.qfct_eval.device)
+        new_state_batch = torch.tensor(self.new_state_memory[batch]).to(self.qfct_eval.device)
+        reward_batch = torch.tensor(self.reward_memory[batch]).to(self.qfct_eval.device)
+        terminal_batch = torch.tensor(self.terminal_memory[batch]).to(self.qfct_eval.device)
+        action_batch = self.action_memory[batch]
 
         batch_indices = np.arange(self.batch_size, dtype=np.int32)
 
@@ -158,9 +190,17 @@ class Agent():
             q_next = self.qfct_next.forward(new_state_batch)
             q_next[terminal_batch] = 0
             q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
-        
+
+        if self.prioritised_replay:
+            # update priorities
+            self.priority_memory[batch] = np.abs((q_target-q_pred).detach().numpy())
+            is_weights_sqrt = np.power(self.is_weights_memory[batch], 0.5)
+            is_weights_sqrt = torch.Tensor(is_weights_sqrt).to(self.qfct_eval.device)
+            q_pred = torch.mul(q_pred, is_weights_sqrt)
+            q_target = torch.mul(q_target, is_weights_sqrt)
+
         loss = self.qfct_eval.loss_fn(q_target, q_pred).to(self.qfct_eval.device)
-        
+
         self.writer.add_scalar("Loss/train", loss, self.learning_iter)
         self.writer.add_scalar("q_value/train", torch.mean(q_pred), self.learning_iter)
         self.writer.add_scalar("q_value/test", self.evaluate(), self.learning_iter)

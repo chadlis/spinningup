@@ -17,6 +17,8 @@ parser.add_argument('--seed', type=int, default=0, help='random seed (default: 4
 
 parser.add_argument('--ddqn', action='store_true',  help='Use Double DQN variante (default:False)')
 parser.add_argument('--prioritisedreplay', action='store_true',  help='Use Prerioritised Replay (default:False)')
+parser.add_argument('--prioritisedreplayalpha', type=float, default=0.8, help='Alpha for prioritised replay (default: 0.8)')
+parser.add_argument('--prioritisedreplaybeta', type=float, default=1, help='Beta for prioritised replay (default: 0.8)')
 parser.add_argument('--multistep', action='store_true',  help='Use Multi-step (default:False)')
 
 parser.add_argument('--epsilon', type=float, default=1, help='exploration vs exploitation epsilon-greedy factor (default: 100%)')
@@ -52,13 +54,15 @@ if __name__ == '__main__':
 
     ddqn = args.ddqn
     prioritised_replay = args.prioritisedreplay
+    prioritised_replay_alpha = args.prioritisedreplayalpha
+    prioritised_replay_beta = args.prioritisedreplaybeta
     multistep = args.multistep
 
     alg_name = 'dqn'
     if ddqn:
         alg_name = 'd' + alg_name
     if prioritised_replay:
-        alg_name += '+priorised'
+        alg_name += '+priorised-' + str(prioritised_replay_alpha) + '-' + str(prioritised_replay_beta)
     if multistep:
         alg_name += '+multistep'
 
@@ -132,7 +136,8 @@ if __name__ == '__main__':
 
     # initialize the agent with the choosen parameters
     agent = Agent(input_dims=input_dims, n_actions=n_actions, lr=lr, gamma=gamma, replay_capacity=replay_capacity, batch_size=batch_size, replace_target=replacetarget, ddqn=ddqn, \
-        prioritised_replay=prioritised_replay, multistep=multistep, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
+        prioritised_replay=prioritised_replay, prioritised_replay_alpha=prioritised_replay_alpha, prioritised_replay_beta=prioritised_replay_beta, \
+        multistep=multistep, epsilon=epsilon, epsilon_min=epsilon_min, epsilon_decay_steps=epsilon_decay_steps, exp_param=exp_param)
     
     # scores and losses memory array for monitoring
     scores = []
